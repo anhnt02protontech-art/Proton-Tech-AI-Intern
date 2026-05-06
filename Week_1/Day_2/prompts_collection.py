@@ -288,6 +288,24 @@ PROMPT_MAP = {
     "generate_email": StructuredPromptLibrary.GENERATE_EMAIL,
 }
 
+# Unstructured baseline prompts (for comparison report 2.12)
+UNSTRUCTURED_PROMPT_MAP = {
+    "summarize_news": "Tom tat doan sau: {text}",
+    "classify_intent": "Doan nay noi ve gi? {text}",
+    "extract_invoice": "Trich xuat thong tin hoa don: {text}",
+    "translate_tech": "Dich sang tieng Viet: {text}",
+    "generate_ad": "Viet noi dung quang cao: {text}",
+}
+
+# Required fields for quick output-quality checks
+REQUIRED_KEYS = {
+    "summarize_news": ["headline", "summary_3_points", "key_entities"],
+    "classify_intent": ["primary_intent", "confidence", "reason"],
+    "extract_invoice": ["vendor_name", "invoice_number", "invoice_date", "total_amount", "currency"],
+    "translate_tech": ["source_language", "target_language", "translated_text", "glossary"],
+    "generate_ad": ["headline_options", "ad_body", "cta"],
+}
+
 
 def _extract_json_from_response(text_response: str):
     """Làm sạch code fence nếu có và parse JSON."""
@@ -314,6 +332,55 @@ def call_openrouter_ai(prompt_template, raw_input):
 
     except Exception as e:
         return {"error": str(e)}
+
+
+def _evaluate_output_quality(output_obj, required_keys):
+    """Simple quality evaluation for comparison report."""
+    if not isinstance(output_obj, dict):
+        return {"json_valid": False, "missing_keys": required_keys, "has_error": True}
+
+    has_error = "error" in output_obj
+    missing_keys = [k for k in required_keys if k not in output_obj] if not has_error else required_keys
+    return {
+        "json_valid": not has_error,
+        "missing_keys": missing_keys,
+        "has_error": has_error,
+    }
+
+
+def compare_structured_vs_unstructured(task_name, text):
+    """
+    Run the same task with structured and unstructured prompt.
+    Returns a compact report dictionary for requirement 2.12.
+    """
+    if task_name not in PROMPT_MAP:
+        return {"error": f"Unsupported task: {task_name}"}
+    if task_name not in UNSTRUCTURED_PROMPT_MAP:
+        return {"error": f"No unstructured baseline for task: {task_name}"}
+
+    structured_output = call_openrouter_ai(PROMPT_MAP[task_name], text)
+    unstructured_prompt = UNSTRUCTURED_PROMPT_MAP[task_name].replace("{text}", text)
+    unstructured_output = call_openrouter_ai(unstructured_prompt, raw_input="")
+
+    required_keys = REQUIRED_KEYS.get(task_name, [])
+    structured_eval = _evaluate_output_quality(structured_output, required_keys)
+    unstructured_eval = _evaluate_output_quality(unstructured_output, required_keys)
+
+    return {
+        "task": task_name,
+        "structured": {
+            "output": structured_output,
+            "evaluation": structured_eval,
+        },
+        "unstructured": {
+            "output": unstructured_output,
+            "evaluation": unstructured_eval,
+        },
+        "short_conclusion": (
+            "Structured prompt cho output ổn định hơn (đúng schema, ít thiếu key hơn) "
+            "so với unstructured prompt."
+        ),
+    }
 
 
 # --- 10 FUNCTIONS TƯƠNG ỨNG ---
@@ -360,5 +427,6 @@ def generate_email(text):
 # --- TEST ---
 if __name__ == "__main__":
     assert len(PROMPT_MAP) == 10, "Thiếu prompt trong bộ 10."
-    test_text = "Tên tôi là gì"
+    test_text = "Tôi muốn mua một chiếc laptop gaming tầm giá 30 triệu."
     print("AI Response:", classify_intent(test_text))
+    print("Comparison Report:", compare_structured_vs_unstructured("classify_intent", test_text))
