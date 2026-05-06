@@ -3,11 +3,11 @@ import os
 import re
 from textwrap import dedent
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 from openai import OpenAI
 
 # 1) Load biến môi trường và khởi tạo OpenRouter client
-load_dotenv()
+load_dotenv(find_dotenv())
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 client = OpenAI(
