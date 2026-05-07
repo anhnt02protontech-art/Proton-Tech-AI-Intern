@@ -1,4 +1,6 @@
+import json
 import os
+import re
 
 try:
     from openai import OpenAI
@@ -8,13 +10,11 @@ except ModuleNotFoundError as exc:
 # Cau hinh moi truong
 try:
     from dotenv import find_dotenv, load_dotenv
-
     load_dotenv(find_dotenv())
 except ModuleNotFoundError:
-    # Van chay duoc neu bien moi truong da duoc set tu he thong.
     pass
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 if not OPENROUTER_API_KEY:
     raise ValueError("Thieu OPENROUTER_API_KEY trong file .env")
 
@@ -23,124 +23,65 @@ client = OpenAI(
     api_key=OPENROUTER_API_KEY,
 )
 
-MODEL = "tencent/hy3-preview:free"
-INPUT_TEXT = (
-    "Microsoft vua ra mat Copilot+ PC tich hop bo xu ly NPU manh me "
-    "cho cac tac vu AI dia phuong."
-)
+# Su dung model ban da chi dinh
+MODEL = "openrouter/free"
 
-ZERO_SHOT_PROMPT = """
-Trich xuat ten cong ty va cong nghe trong van ban sau.
-Tra ve dung 1 JSON object voi 2 key: "cong_ty", "cong_nghe".
-
-Van ban: "{text}"
-JSON:
-""".strip()
-
-FEW_SHOT_PROMPTS = {
-    "few_shot_1_co_ban": """
-Ban la tro ly trich xuat du lieu.
-Nhiem vu: Trich xuat "cong_ty" va "cong_nghe", tra ve JSON object.
-
-Vi du 1:
-Van ban: "Apple cong bo chip M3 cho MacBook."
-JSON: {"cong_ty": "Apple", "cong_nghe": "chip M3"}
-
-Vi du 2:
-Van ban: "Google dua Gemini vao he sinh thai tim kiem."
-JSON: {"cong_ty": "Google", "cong_nghe": "Gemini"}
-
-Vi du 3:
-Van ban: "Tesla nang cap FSD bang mang no-ron."
-JSON: {"cong_ty": "Tesla", "cong_nghe": "FSD, mang no-ron"}
-
-Van ban: "{text}"
-JSON:
-""".strip(),
-    "few_shot_2_rang_buoc_format": """
-Hay trich xuat thong tin va chi tra ve JSON object hop le.
-Schema bat buoc:
-{"cong_ty": "<string>", "cong_nghe": "<string>"}
-
-Vi du 1:
-Input: "NVIDIA day manh GPU Blackwell cho AI."
-Output: {"cong_ty": "NVIDIA", "cong_nghe": "GPU Blackwell"}
-
-Vi du 2:
-Input: "OpenAI phat hanh GPT-4.1 cho lap trinh."
-Output: {"cong_ty": "OpenAI", "cong_nghe": "GPT-4.1"}
-
-Vi du 3:
-Input: "Meta toi uu Llama cho ung dung tro ly ao."
-Output: {"cong_ty": "Meta", "cong_nghe": "Llama"}
-
-Input: "{text}"
-Output:
-""".strip(),
-    "few_shot_3_phan_tich_ngan": """
-Trich xuat thong tin theo mau:
-1) Xac dinh cong ty.
-2) Xac dinh cong nghe/nen tang duoc nhac den.
-3) Tra ve JSON object voi key "cong_ty", "cong_nghe".
-
-Mau 1:
-Text: "Amazon nang cap dich vu Bedrock cho khach hang doanh nghiep."
-JSON: {"cong_ty": "Amazon", "cong_nghe": "Bedrock"}
-
-Mau 2:
-Text: "Intel gioi thieu vi xu ly Lunar Lake toi uu AI tren may tinh."
-JSON: {"cong_ty": "Intel", "cong_nghe": "Lunar Lake"}
-
-Mau 3:
-Text: "Adobe dua Firefly vao Photoshop de ho tro tao anh."
-JSON: {"cong_ty": "Adobe", "cong_nghe": "Firefly"}
-
-Text: "{text}"
-JSON:
-""".strip(),
-}
-
-
-def call_ai(prompt: str, temperature: float = 0.2) -> str:
-    """Goi AI voi temperature thap de giam sai lech format."""
+def get_ai_response(prompt):
     try:
         response = client.chat.completions.create(
             model=MODEL,
             messages=[{"role": "user", "content": prompt}],
-            temperature=temperature,
+            temperature=0.1 # De thap de dam bao tinh on dinh khi so sanh
         )
-        content = response.choices[0].message.content
-        if content is None:
-            return "Error: Model tra ve content=None (khong co noi dung tra loi)."
-        return content.strip()
-    except Exception as exc:
-        return f"Error: {exc}"
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"Loi ket noi: {str(e)}"
 
+# 1. Input can xu ly (Mot cau hoi kho, co tinh mia mai)
+test_input = "Sản phẩm tuyệt vời, dùng xong muốn vứt luôn cái điện thoại cũ đi vì nó... quá tệ so với cái này."
 
-def fill_prompt(prompt_template: str, text: str) -> str:
-    """
-    Chen input text vao prompt ma khong dung str.format,
-    tranh xung dot voi dau { } trong JSON examples/schema.
-    """
-    return prompt_template.replace("{text}", text)
+# 2. Cau truc Zero-shot Prompt
+zero_shot_prompt = f"""
+Hãy xác định sentiment của câu sau.: "{test_input}"
+Trả về kết quả định dạng JSON gồm: sentiment (Tích cực/Tiêu cực) và score (1-10).
+"""
 
+# 3. Cau truc Few-shot Prompt (Nen bat suc manh bang cach day model hieu ngu canh)
+few_shot_prompt = f"""
+Bạn là một chuyên gia phân tích dữ liệu khách hàng. Hãy phân tích sắc thái bình luận và trả về JSON chuẩn.
 
-def run_lab2() -> None:
-    print("=" * 96)
-    print("LAB 2 - SO SANH ZERO-SHOT VOI 3 FEW-SHOT PROMPTS")
-    print(f"Model : {MODEL}")
-    print(f"Input : {INPUT_TEXT}")
-    print("=" * 96)
+### Ví dụ 1:
+Input: "Giao hàng nhanh, đóng gói cẩn thận."
+Output: {{"sentiment": "Tích cực", "score": 9}}
 
-    print("\n[0] Zero-shot")
-    zero_result = call_ai(fill_prompt(ZERO_SHOT_PROMPT, INPUT_TEXT))
-    print(zero_result)
+### Ví dụ 2:
+Input: "Chờ cả tuần mà hàng vẫn chưa thấy đâu, làm ăn chán thật."
+Output: {{"sentiment": "Tiêu cực", "score": 2}}
 
-    for index, (name, prompt_template) in enumerate(FEW_SHOT_PROMPTS.items(), start=1):
-        print(f"\n[{index}] {name}")
-        result = call_ai(fill_prompt(prompt_template, INPUT_TEXT))
-        print(result)
+### Ví dụ 3 (Nhận diện mỉa mai):
+Input: "Hàng đẹp lắm, treo lên làm cảnh chứ không dùng được."
+Output: {{"sentiment": "Tiêu cực", "score": 3}}
 
+### Yêu cầu thực tế:
+Input: "{test_input}"
+Output:
+"""
+
+def main():
+    print(test_input)
+    print("--- ĐANG CHẠY THỬ NGHIỆM LAB 2 ---")
+    
+    print("\n[1] KẾT QUẢ ZERO-SHOT:")
+    print("-" * 30)
+    zs_res = get_ai_response(zero_shot_prompt)
+    print(zs_res)
+
+    print("\n[2] KẾT QUẢ FEW-SHOT:")
+    print("-" * 30)
+    fs_res = get_ai_response(few_shot_prompt)
+    print(fs_res)
+
+    print("\n" + "="*50)
 
 if __name__ == "__main__":
-    run_lab2()
+    main()
