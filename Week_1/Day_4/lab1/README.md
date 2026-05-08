@@ -5,14 +5,27 @@
 - Cai thu vien:
 
 ```bash
+cd Week_1/Day_4/lab1
 pip install -r requirements.txt
 ```
 
 ## Cach chay
-Di chuyen vao noi can chay code, sau do chay:
+Chay trong thu muc `Week_1/Day_4/lab1`:
 
 ```bash
 python lab1.py
+```
+
+Hoac chay tu root project:
+
+```bash
+python Week_1/Day_4/lab1/lab1.py
+```
+
+Neu can doc file CSV khac:
+
+```bash
+python lab1.py --file duong_dan_toi_file.csv
 ```
 
 ## Ket qua script

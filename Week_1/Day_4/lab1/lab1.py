@@ -1,4 +1,5 @@
 from pathlib import Path
+import argparse
 
 import pandas as pd
 
@@ -95,7 +96,18 @@ def process_sales_data(df: pd.DataFrame) -> None:
 
 
 if __name__ == "__main__":
-    csv_path = Path(__file__).with_name("data.csv")
+    parser = argparse.ArgumentParser(
+        description="Read sales CSV, filter products, and summarize revenue by category."
+    )
+    parser.add_argument(
+        "--file",
+        dest="file_path",
+        default=str(Path(__file__).with_name("data.csv")),
+        help="Path to CSV file. Default: data.csv in the same folder as lab1.py",
+    )
+    args = parser.parse_args()
+
+    csv_path = Path(args.file_path)
     data = read_and_preview_csv(str(csv_path))
     if data is not None:
         process_sales_data(data)
